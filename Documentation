@@ -1,0 +1,640 @@
+Anna Canteen MIS – Automated ETL and Reporting Pipeline
+1. Project Overview
+1.1 Objective
+The objective of this project is to automate the collection, cleaning, standardization, consolidation, and export of Anna Canteen MIS data from multiple kitchen-level Excel files.
+Each kitchen maintains its own MIS files. The Python ETL process collects data from these files and prepares standardized datasets for management reporting and dashboard development.
+The processed data can be used to analyze:
+•	Daily expenditure
+•	Food cost
+•	Food cost percentage
+•	Income
+•	Vegetable cost
+•	Gas consumption/cost
+•	Diesel consumption/cost
+•	Electricity cost
+•	Water cost
+•	Manpower cost
+•	Transportation cost
+•	Production and delivery information
+•	Food wastage
+The final datasets are exported as CSV files and can be consumed by Power BI for reporting and management dashboards.
+________________________________________
+2. Source Data
+The source data is maintained in Excel files organized by kitchen.
+A typical folder structure is:
+Anna Canteen MIS sheets
+│
+├── ATC
+│   ├── COM.xlsx
+│   ├── Production.xlsx
+│   ├── Maintenance and Utilities.xlsx
+│   └── ...
+│
+├── BBL
+│   ├── COM.xlsx
+│   ├── Production.xlsx
+│   └── ...
+│
+├── GMB
+│   ├── COM.xlsx
+│   └── ...
+│
+├── SKLM
+│   └── ...
+│
+└── VSP
+    └── ...
+Each kitchen folder contains the MIS files maintained by the respective kitchen.
+The kitchen name is obtained from the parent folder of the Excel file and added to the processed dataset as the Kitchen column.
+________________________________________
+3. Technology Used
+The ETL process is developed using Python.
+Python Libraries
+Library	Purpose
+pandas	Data loading, cleaning, transformation and consolidation
+pathlib	File and folder traversal
+openpyxl	Reading Excel workbook information
+datetime	Date and time handling
+time.perf_counter	Measuring processing time
+python-magic	File type identification where required
+________________________________________
+4. Overall ETL Workflow
+The complete process follows the structure below:
+                Source Excel Files
+                       │
+                       ▼
+              Discover Kitchen Folders
+                       │
+                       ▼
+                 Identify Files
+                       │
+                       ▼
+             Check Processing Log
+                 /           \
+              Already       New/Modified
+              Processed         File
+                 │               │
+                Skip             ▼
+                         Load Workbook
+                               │
+                               ▼
+                         Read Relevant Sheets
+                               │
+                               ▼
+                          Clean Data
+                               │
+                               ▼
+                       Standardize Dates
+                               │
+                               ▼
+                     Add Kitchen Identifier
+                               │
+                               ▼
+                       Classify Sheet
+                               │
+                               ▼
+                    Store DataFrame in List
+                               │
+                               ▼
+                       Combine DataFrames
+                               │
+                               ▼
+                         Export CSV
+                               │
+                               ▼
+                         Power BI
+________________________________________
+5. File Discovery
+The Python program first identifies the main input directory and traverses the folders inside it.
+pathlib.Path is used to work with files and folders.
+The process identifies:
+•	Kitchen folders
+•	Excel files
+•	File names
+•	Parent kitchen folder
+•	Relative file path
+•	Last modified time
+The relative path is used in the processing log so that the same file can be identified later.
+________________________________________
+6. Navigation File Handling
+Some folders contain files that are not part of the actual MIS processing.
+For example:
+Navigation.xlsx
+These files are skipped during processing.
+This prevents unrelated Excel files from entering the ETL pipeline.
+________________________________________
+7. Processing Log
+A processing log is maintained to prevent the program from repeatedly processing unchanged files.
+The log contains information such as:
+Column	Description
+relative_path	Relative location of the processed file
+Modified_time	Last modified timestamp of the file
+Example:
+relative_path                         Modified_time
+ATC/COM.xlsx                          2026-09-20 10:30:25
+BBL/Maintenance and Utilities.xlsx   2026-09-20 11:15:42
+7.1 Skip Logic
+Before processing a file, the program checks whether the combination of:
+relative_path + Modified_time
+already exists in the log.
+If the same file and modification time are already present, the file is skipped.
+If the file is new or its modification time has changed, the file is processed again.
+This provides an incremental-processing approach instead of unnecessarily processing every file during every execution.
+________________________________________
+8. Workbook Processing
+After a file passes the processing-log check, the workbook is opened and its sheet names are identified.
+Each relevant worksheet is processed individually.
+The general process is:
+Excel Workbook
+      ↓
+Identify Sheets
+      ↓
+Read Sheet
+      ↓
+Clean Data
+      ↓
+Standardize Data
+      ↓
+Classify Sheet
+The data is loaded into pandas DataFrames for further transformation.
+________________________________________
+9. Reading Excel Data
+The current ETL process reads the Excel worksheet using pandas.
+Example:
+df = pd.read_excel(
+    subfiles,
+    sheet_name=sheetname,
+    header=1
+)
+The header=1 parameter indicates that the second row of the Excel worksheet is treated as the column header.
+This is required because the source MIS files may contain an additional row above the actual column headers.
+________________________________________
+10. Handling Inconsistent Excel Structure
+The source Excel files are not completely standardized.
+Different worksheets may contain:
+•	Empty columns
+•	Different date formats
+•	X values
+•	Blank cells
+•	Different header positions
+•	Different sheet names
+•	Additional formatting
+•	Unused spreadsheet areas
+Therefore, the ETL process performs data cleaning before exporting the final datasets.
+________________________________________
+11. Removing Sparse Columns
+Some Excel worksheets contain columns that are mostly empty.
+The following operation removes columns that contain fewer than seven non-null values:
+df = df.dropna(axis=1, thresh=7)
+Explanation
+axis=1
+means columns.
+thresh=7
+means that a column must contain at least seven non-null values to be retained.
+This helps remove unnecessary columns caused by inconsistent Excel formatting or partially populated worksheets.
+________________________________________
+12. Handling X Values
+Some source worksheets use X or x to represent unavailable or non-applicable values.
+These values can be converted to missing values:
+df = df.replace(["X", "x"], pd.NA)
+After conversion, completely empty columns can be removed:
+df = df.dropna(axis=1, how="all")
+This means:
+If every value in a column is missing after replacing X values, the entire column is removed.
+For example:
+Column A
+--------
+X
+X
+X
+X
+becomes:
+Column A
+--------
+NA
+NA
+NA
+NA
+and can therefore be removed.
+A column containing:
+X
+X
+250
+X
+X
+is retained because it contains an actual value.
+________________________________________
+13. Kitchen Identification
+Because each kitchen has its own folder, the kitchen name is obtained from the parent directory of the Excel file.
+Example:
+df["Kitchen"] = subfiles.parent.stem
+If the file is located at:
+ATC/COM.xlsx
+the value added to the DataFrame will be:
+Kitchen = ATC
+This allows data from multiple kitchens to be combined while retaining the source kitchen information.
+________________________________________
+14. Date Standardization
+Date values are one of the important areas of data cleaning because different source files may contain different date formats.
+Examples include:
+2025-07-01
+2025-07-01 00:00:00
+01-Jun-2026
+01/06/2026
+01-06-2026
+If these values are exported without standardization, Power BI may interpret some of them differently or fail to parse them.
+Therefore, dates are standardized before exporting the data.
+________________________________________
+15. Date Cleaning Function
+A reusable function is used to identify supported date formats.
+def clean_date(value):
+
+    if pd.isna(value):
+        return pd.NaT
+
+    value = str(value).strip()
+
+    formats = [
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M:%S",
+        "%d-%b-%Y",
+        "%d/%m/%Y",
+        "%d-%m-%Y"
+    ]
+
+    for fmt in formats:
+        try:
+            return pd.to_datetime(value, format=fmt)
+        except (ValueError, TypeError):
+            continue
+
+    return pd.NaT
+The function works as follows:
+1.	Check whether the value is missing.
+2.	Convert the value to text.
+3.	Remove unnecessary spaces.
+4.	Try the known date formats one by one.
+5.	Return the converted date if a format matches.
+6.	Return NaT if none of the supported formats match.
+________________________________________
+16. Applying Date Cleaning
+The function can be applied to the entire Date column:
+df["Date"] = df["Date"].apply(clean_date)
+After conversion, the dates can be exported in a consistent format:
+df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+The resulting format is:
+YYYY-MM-DD
+For example:
+01-Jun-2026
+becomes:
+2026-06-01
+________________________________________
+17. Handling Missing Dates
+Some Excel reports may contain a date only on the first row of a group while subsequent rows are blank.
+Forward filling can be used when the source structure indicates that blank rows belong to the preceding date:
+df["Date"] = df["Date"].ffill()
+This carries the previous valid date into the following blank cells.
+The use of ffill() should be based on the actual structure of the source worksheet.
+________________________________________
+18. Date Validation
+After cleaning the Date column, invalid or unrecognized values can be checked.
+invalid_dates = df["Date"].isna().sum()
+This helps identify records where the date could not be converted.
+Invalid records can also be inspected:
+bad_dates = df[df["Date"].isna()]
+This validation is useful before exporting the data to Power BI.
+________________________________________
+19. Sheet Classification
+The workbook contains different worksheets representing different categories of operational data.
+The ETL process classifies each worksheet into its corresponding dataset.
+The sheet name is first normalized to reduce problems caused by spaces, underscores, or differences in capitalization.
+Example:
+sheet_key = (
+    sheetname.lower()
+    .strip()
+    .replace("_", "")
+    .replace(" ", "")
+)
+For example:
+"Food Wastage"
+becomes:
+foodwastage
+This makes sheet-name matching more reliable.
+________________________________________
+20. Dataset Categories
+The ETL process maintains separate collections for different datasets.
+The main categories include:
+•	COM
+•	Production
+•	Delivery
+•	Food Wastage
+•	Vegetable Utilisation
+•	Utilisation Cost
+•	Electricity Utilisation
+•	Gas Utilisation
+•	Water Utilisation
+•	Briquets Utilisation
+•	Diesel Utilisation
+Each processed DataFrame is appended to the appropriate list.
+Example:
+if sheet_key == "com":
+    COM.append(df)
+________________________________________
+21. Why Lists of DataFrames Are Used
+Each kitchen may contain its own version of the same worksheet.
+For example:
+ATC → COM
+BBL → COM
+GMB → COM
+SKLM → COM
+VSP → COM
+Instead of immediately writing every individual DataFrame to a separate file, the processed DataFrames are stored in a list:
+COM = []
+Each processed COM DataFrame is appended:
+COM.append(df)
+Once all kitchen files have been processed, the DataFrames can be combined into one dataset.
+________________________________________
+22. Data Consolidation
+After processing all relevant files, DataFrames belonging to the same category are combined using pd.concat().
+Example:
+final_COM = pd.concat(COM, ignore_index=True)
+This creates one consolidated COM dataset containing data from multiple kitchens.
+ignore_index=True creates a new continuous index for the combined DataFrame.
+The same approach can be used for the other datasets.
+________________________________________
+23. Example Consolidation Flow
+ATC COM DataFrame
+        │
+BBL COM DataFrame
+        │
+GMB COM DataFrame
+        │
+SKLM COM DataFrame
+        │
+VSP COM DataFrame
+        │
+        ▼
+   COM List
+        │
+        ▼
+   pd.concat()
+        │
+        ▼
+   Final COM Dataset
+This provides a centralized dataset for reporting.
+________________________________________
+24. Output Files
+The processed datasets are exported as CSV files.
+Expected output datasets include:
+COM.csv
+Production.csv
+Delivery.csv
+Food_Wastage.csv
+Veg_Utilisation.csv
+Utilisation_Cost.csv
+Electricity_Utilisation.csv
+Gas_Utilisation.csv
+Water_Utilisation.csv
+Briquets_Utilisation.csv
+Diesel_Utilisation.csv
+The exact output names depend on the implementation of the export section.
+________________________________________
+25. Power BI Integration
+The exported CSV files are intended to be used as source data for Power BI.
+The general reporting architecture is:
+Kitchen Excel Files
+        ↓
+Python ETL
+        ↓
+Cleaned CSV Files
+        ↓
+Power BI
+        ↓
+Management Dashboard
+Python is responsible for data preparation and standardization, while Power BI is used for visualization, analysis, and management reporting.
+________________________________________
+26. COM Data Dictionary
+The COM dataset contains operational and financial information used to analyze canteen expenditure and food cost.
+Field	Description
+Date	Date of the transaction/report
+Session	Meal/session information
+SO.No	Sales Order number
+Menu	Menu or meal description
+Indent	Indent information
+Actual Sales	Actual sales quantity/value
+Items	Item description
+Price	Price of the item
+Provision Cost	Provision-related cost
+Vegetable Cost	Vegetable-related cost
+Gas	Gas-related cost
+Diesel	Diesel-related cost
+Water	Water-related cost
+Electricity	Electricity-related cost
+Manpower	Manpower-related cost
+Transportation	Transportation-related cost
+Expenditure	Total expenditure
+Income	Income generated
+Food Cost	Food-related cost
+Food Cost %	Food cost as a percentage
+________________________________________
+27. Error Handling
+Errors during ETL processing are captured with information about the file and worksheet being processed.
+Example:
+except Exception as e:
+
+    print("Folder:", subfiles.parent.stem)
+    print("File:", subfiles.name)
+    print("Sheet:", sheetname)
+    print("Error type:", type(e).__name__)
+    print("Error message:", e)
+
+    raise
+This provides useful debugging information such as:
+Folder: ATC
+File: Maintenance and Utilities.xlsx
+Sheet: Deisel utilisation
+Error type: KeyError
+Error message: 'Date'
+This makes it easier to identify the exact source of an ETL failure.
+________________________________________
+28. Performance Monitoring
+Processing time is measured using perf_counter().
+Example:
+start = perf_counter()
+
+# processing
+
+end = perf_counter()
+
+print("Read time:", end - start)
+This helps identify which files or worksheets take longer to process.
+Performance monitoring is particularly important because Excel files can contain large used ranges caused by formatting or unused rows and columns.
+________________________________________
+29. Large Excel File Considerations
+Excel file size does not always represent the amount of actual data.
+A worksheet may contain formatting or populated spreadsheet ranges extending to a very large number of rows even when only a small portion contains meaningful data.
+When such files are loaded into pandas, memory usage can increase significantly.
+Therefore, large source files should be monitored for:
+•	Excessive unused rows
+•	Excessive unused columns
+•	Large formatted ranges
+•	Repeated workbook reads
+•	Duplicate DataFrames in memory
+•	Unnecessary columns
+Optimization should be performed after confirming that the ETL process produces correct results.
+________________________________________
+30. Important Data Quality Checks
+Before exporting the final datasets, the following checks should be performed:
+Row Count
+print(df.shape)
+Column Names
+print(df.columns.tolist())
+Missing Values
+print(df.isna().sum())
+Duplicate Records
+print(df.duplicated().sum())
+Date Validation
+print(df["Date"].isna().sum())
+Sample Data
+print(df.head())
+These checks help identify unexpected changes in the source files.
+________________________________________
+31. Processing Logic Summary
+The complete processing logic can be summarized as:
+1. Identify input folder
+2. Discover kitchen folders
+3. Identify Excel files
+4. Skip Navigation files
+5. Determine relative file path
+6. Determine file modification time
+7. Check processing log
+8. Skip unchanged files
+9. Open workbook
+10. Identify worksheets
+11. Read worksheet into DataFrame
+12. Remove sparse columns
+13. Handle X values
+14. Standardize Date column
+15. Add Kitchen column
+16. Normalize worksheet name
+17. Classify worksheet
+18. Append DataFrame to category list
+19. Combine DataFrames
+20. Validate final datasets
+21. Export CSV files
+22. Use CSV datasets for Power BI reporting
+________________________________________
+32. Current Limitations
+The current ETL process has some areas that can be improved as the project evolves.
+32.1 Source Structure
+Different Excel worksheets may have different header positions and structures.
+A fixed:
+header=1
+may not work for every worksheet.
+32.2 Date Formats
+New date formats may appear in future source files and may need to be added to the date-cleaning logic.
+32.3 Memory Usage
+Large Excel worksheets can consume significant RAM when loaded into pandas.
+32.4 Processing Log
+The processing log should ideally be updated only after a file has been successfully processed and its output has been created.
+32.5 Validation
+Additional automated data-quality checks can be added before exporting the final datasets.
+________________________________________
+33. Future Improvements
+The ETL pipeline can be further improved by:
+1.	Converting repeated processing logic into reusable functions.
+2.	Creating configuration dictionaries for sheet classification.
+3.	Improving automatic detection of header rows.
+4.	Adding stronger date validation.
+5.	Adding row-count and data-quality validation.
+6.	Improving processing-log reliability.
+7.	Reducing repeated Excel workbook reads.
+8.	Processing only required columns where possible.
+9.	Improving memory management for large workbooks.
+10.	Adding structured logging instead of only console messages.
+11.	Adding automated error reports.
+12.	Adding unit tests for important cleaning functions.
+13.	Connecting the cleaned data directly to a database when the data volume increases.
+14.	Scheduling the ETL process automatically.
+________________________________________
+34. Project Outcome
+The ETL process transforms manually maintained kitchen-level Excel MIS data into standardized datasets suitable for management reporting.
+The process provides:
+•	Centralized data from multiple kitchens
+•	Automated data cleaning
+•	Standardized dates
+•	Consistent kitchen identification
+•	Incremental file processing
+•	Reduced repetitive manual processing
+•	Separate datasets by operational category
+•	CSV outputs suitable for Power BI
+•	A foundation for scalable reporting automation
+The overall architecture separates data preparation from data visualization, with Python handling ETL and Power BI handling analysis and management reporting.
+________________________________________
+35. Key Design Decisions
+The following decisions were made during development:
+Use Python for ETL
+Python was selected because the source data consists of multiple Excel files with inconsistent structures and requires repeated cleaning and transformation.
+Use Pandas DataFrames
+Pandas provides a convenient structure for cleaning, transforming, validating, and combining tabular data.
+Use Kitchen as a Data Attribute
+The kitchen name is added during processing so that consolidated datasets retain their source information.
+Use Processing Logs
+Processing logs prevent unchanged files from being unnecessarily processed again.
+Standardize Dates Before Export
+Date standardization reduces parsing problems when the output is consumed by Power BI.
+Consolidate Similar Sheets
+Data from the same type of worksheet across different kitchens is combined into a single dataset for centralized reporting.
+________________________________________
+36. Final Architecture
+                    KITCHEN MIS FILES
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+       ATC                BBL                GMB
+        │                  │                  │
+        └──────────────────┼──────────────────┘
+                           │
+                           ▼
+                    PYTHON ETL PIPELINE
+                           │
+              ┌────────────┴────────────┐
+              │                         │
+        File Processing           Data Cleaning
+              │                         │
+              └────────────┬────────────┘
+                           │
+                           ▼
+                  Data Standardization
+                           │
+                           ▼
+                  Sheet Classification
+                           │
+                           ▼
+                    Data Consolidation
+                           │
+                           ▼
+                     CSV DATASETS
+                           │
+                           ▼
+                       POWER BI
+                           │
+                           ▼
+                  MANAGEMENT REPORTING
+________________________________________
+37. Maintenance Note
+When a new kitchen, workbook, worksheet, or data format is introduced, the ETL process should be tested before the new data is included in production reporting.
+Particular attention should be given to:
+•	Worksheet names
+•	Header positions
+•	Date formats
+•	Column names
+•	Missing values
+•	X values
+•	Unexpected additional columns
+•	Row counts
+•	Processing-log behavior
+•	Power BI refresh compatibility
+The purpose of this documentation is to make the ETL process understandable and maintainable rather than dependent on the original developer's knowledge alone.
+Available next action: Create a downloadable DOCX file here in this chat containing the editable prose above
+
