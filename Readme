@@ -1,0 +1,51 @@
+# Anna Canteen MIS – Automated ETL Pipeline
+
+## Overview
+
+This project is a Python-based ETL pipeline developed to automate the processing of Anna Canteen MIS data maintained across multiple kitchen-level Excel files.
+
+The pipeline discovers source files, checks processing history, reads relevant worksheets, cleans and standardizes the data, identifies the source kitchen, consolidates datasets, and exports standardized CSV files for Power BI reporting.
+
+## Business Objective
+
+The objective is to reduce repetitive manual data preparation and provide standardized datasets for management reporting.
+
+The processed data supports analysis of:
+
+- Food cost
+- Food cost %
+- Income
+- Expenditure
+- Vegetable cost
+- Gas
+- Diesel
+- Electricity
+- Water
+- Production
+- Delivery
+- Food wastage
+
+## ETL Workflow
+
+```text
+Excel Files
+     ↓
+File Discovery
+     ↓
+Processing Log
+     ↓
+Read Excel Sheets
+     ↓
+Data Cleaning
+     ↓
+Date Standardization
+     ↓
+Kitchen Identification
+     ↓
+Sheet Classification
+     ↓
+Data Consolidation
+     ↓
+CSV Output
+     ↓
+Power BI
